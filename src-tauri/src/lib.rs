@@ -2,12 +2,32 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  let migrations = vec![Migration {
-    version: 1,
-    description: "init_core_schema",
-    sql: include_str!("../migrations/0001_init.sql"),
-    kind: MigrationKind::Up,
-  }];
+  let migrations = vec![
+    Migration {
+      version: 1,
+      description: "init_core_schema",
+      sql: include_str!("../migrations/0001_init.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 2,
+      description: "add_avatar",
+      sql: include_str!("../migrations/0002_add_avatar.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 3,
+      description: "add_shop_logo",
+      sql: include_str!("../migrations/0003_add_shop_logo.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 4,
+      description: "add_cloud_provisioned",
+      sql: include_str!("../migrations/0004_add_cloud_provisioned.sql"),
+      kind: MigrationKind::Up,
+    },
+  ];
 
   tauri::Builder::default()
     .plugin(

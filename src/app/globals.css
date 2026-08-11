@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Belt-and-suspenders against a WebView2 repaint quirk on Windows: after a
+   window resize/maximize, elements can occasionally fail to repaint past the
+   viewport size that was current at last paint, exposing the native window's
+   raw background underneath. Locking html/body to the full, live viewport
+   height (rather than relying only on a min-height that's computed once)
+   gives the compositor a concrete size to reconcile against. */
+html, body {
+  height: 100%;
+}
+
 @layer utilities {
   @keyframes fadeIn {
     from { opacity: 0; }

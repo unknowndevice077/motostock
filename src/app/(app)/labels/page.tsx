@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { useAuth } from "@/lib/auth/session";
 import { listParts } from "@/lib/db/parts";
 import type { Part } from "@/types";
+import { getCached, setCached } from "@/lib/db/cache";
 import { Button } from "@/components/ui/Button";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { HelpTip } from "@/components/ui/HelpTip";
@@ -12,8 +13,8 @@ import { IconPrinter, IconTag } from "@/components/ui/icons";
 
 export default function LabelsPage() {
   const { shop, track } = useAuth();
-  const [parts, setParts] = useState<Part[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [parts, setParts] = useState<Part[]>(() => (shop && getCached<Part[]>(`parts:${shop.id}`)) || []);
+  const [loading, setLoading] = useState(() => !(shop && getCached(`parts:${shop.id}`)));
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [qrCache, setQrCache] = useState<Map<string, string>>(new Map());
@@ -21,6 +22,7 @@ export default function LabelsPage() {
   useEffect(() => {
     if (!shop) return;
     listParts(shop.id).then((p) => {
+      setCached(`parts:${shop.id}`, p);
       setParts(p);
       setLoading(false);
     });

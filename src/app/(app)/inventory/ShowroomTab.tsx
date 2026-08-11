@@ -7,6 +7,7 @@ import { listMotorcycles, createMotorcycle, updateMotorcycle, deleteMotorcycle, 
 import type { Motorcycle } from "@/types";
 import { MOTORCYCLE_CATEGORIES } from "@/lib/constants";
 import { formatCurrency } from "@/lib/format";
+import { getCached, setCached } from "@/lib/db/cache";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -22,8 +23,8 @@ export function ShowroomTab() {
   const { push } = useToast();
   const isAdmin = currentUser?.role === "admin";
 
-  const [bikes, setBikes] = useState<Motorcycle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [bikes, setBikes] = useState<Motorcycle[]>(() => (shop && getCached<Motorcycle[]>(`motorcycles:${shop.id}`)) || []);
+  const [loading, setLoading] = useState(() => !(shop && getCached(`motorcycles:${shop.id}`)));
   const [search, setSearch] = useState("");
 
   const [showAdd, setShowAdd] = useState(false);
@@ -33,7 +34,9 @@ export function ShowroomTab() {
 
   const reload = async () => {
     if (!shop) return;
-    setBikes(await listMotorcycles(shop.id));
+    const fresh = await listMotorcycles(shop.id);
+    setCached(`motorcycles:${shop.id}`, fresh);
+    setBikes(fresh);
     setLoading(false);
   };
 

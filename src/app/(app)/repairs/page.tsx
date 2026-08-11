@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/session";
@@ -8,12 +8,15 @@ import { useToast } from "@/components/ui/Toast";
 import { listRepairJobs, createRepairJob, type RepairJobInput } from "@/lib/db/repairJobs";
 import type { RepairJob, RepairJobStatus } from "@/types";
 import { formatCurrency } from "@/lib/format";
+import { isWithinDateRange } from "@/lib/dateRange";
+import { getCached, setCached } from "@/lib/db/cache";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { TextField, TextAreaField } from "@/components/ui/FormField";
 import { HelpTip } from "@/components/ui/HelpTip";
+import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 import { IconPlus, IconWrench } from "@/components/ui/icons";
 
 const emptyForm: RepairJobInput = { customerName: "", customerPhone: "", motorcycleDesc: "", laborFee: 0, notes: "" };
@@ -31,18 +34,34 @@ export default function RepairsPage() {
   const { push } = useToast();
   const router = useRouter();
 
-  const [jobs, setJobs] = useState<RepairJob[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [jobs, setJobs] = useState<RepairJob[]>(() => (shop && getCached<RepairJob[]>(`repair_jobs:${shop.id}`)) || []);
+  const [loading, setLoading] = useState(() => !(shop && getCached(`repair_jobs:${shop.id}`)));
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState<RepairJobInput>(emptyForm);
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
     if (!shop) return;
     listRepairJobs(shop.id).then((j) => {
+      setCached(`repair_jobs:${shop.id}`, j);
       setJobs(j);
       setLoading(false);
     });
   }, [shop]);
+
+  const filteredJobs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return jobs.filter((j) => {
+      const matchesQuery =
+        !q ||
+        j.customerName.toLowerCase().includes(q) ||
+        (j.motorcycleDesc ?? "").toLowerCase().includes(q) ||
+        (j.customerPhone ?? "").toLowerCase().includes(q);
+      return matchesQuery && isWithinDateRange(j.createdAt, dateFrom, dateTo);
+    });
+  }, [jobs, search, dateFrom, dateTo]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +84,7 @@ export default function RepairsPage() {
       ),
     },
     { header: "Motorcycle", render: (j) => <span className="font-mono text-slate-400">{j.motorcycleDesc || "—"}</span> },
+    { header: "Date", render: (j) => <span className="font-mono text-slate-500 text-[11px]">{new Date(j.createdAt).toLocaleDateString()}</span> },
     { header: "Status", align: "center", render: (j) => <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase ${statusClasses[j.status]}`}>{statusLabel[j.status]}</span> },
     { header: "Total", align: "right", render: (j) => <span className="font-mono font-bold text-slate-200">{formatCurrency(j.total)}</span> },
     {
@@ -82,23 +102,38 @@ export default function RepairsPage() {
     <div className="space-y-6 animate-slideUp">
       <HelpTip id="repairs-list">
         Create a job for each customer/motorcycle that comes in. Open its detail page to log
-        parts consumed and labor, then mark it In Progress or Completed. You can also add parts
-        to an open job straight from <strong>POS &rarr; Repair Job</strong>.
+        parts consumed and labor, then mark it In Progress or Completed. Search by customer,
+        motorcycle, or phone, or narrow to a date range. You can also add parts to an open job
+        straight from <strong>POS &rarr; Repair Job</strong>.
       </HelpTip>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
             <IconWrench width={18} height={18} className="text-slate-300" /> Repair Jobs
           </h2>
           <p className="text-xs text-slate-400">Track jobs and the parts consumed against each one.</p>
         </div>
-        <Button onClick={() => { setForm(emptyForm); setShowAdd(true); }}>
-          <IconPlus width={14} height={14} /> New Job
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search customer, bike, phone..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 min-w-[200px] transition-all duration-200"
+          />
+          <DateRangeFilter from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
+          <Button onClick={() => { setForm(emptyForm); setShowAdd(true); }}>
+            <IconPlus width={14} height={14} /> New Job
+          </Button>
+        </div>
       </div>
 
-      {loading ? <TableSkeleton rows={4} cols={5} /> : <DataTable columns={columns} rows={jobs} keyExtractor={(j) => j.id} emptyMessage="No repair jobs yet." />}
+      {loading ? (
+        <TableSkeleton rows={4} cols={6} />
+      ) : (
+        <DataTable columns={columns} rows={filteredJobs} keyExtractor={(j) => j.id} emptyMessage={jobs.length === 0 ? "No repair jobs yet." : "No jobs match your search or date range."} />
+      )}
 
       {showAdd && (
         <Modal title="New Repair Job" onClose={() => setShowAdd(false)}>

@@ -38,7 +38,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
         {toasts.map((t) => (
-          <div key={t.id} className={`pointer-events-auto animate-slideUp border px-4 py-2.5 rounded-lg shadow-2xl text-xs font-mono flex items-center gap-2 backdrop-blur ${kindClasses[t.kind]}`}>
+          <div key={t.id} className={`pointer-events-auto animate-slideUp border px-4 py-2.5 rounded-lg shadow-2xl text-xs font-mono flex items-center gap-2 ${kindClasses[t.kind]}`}>
             <span>{kindIcon[t.kind]}</span>
             {t.message}
           </div>

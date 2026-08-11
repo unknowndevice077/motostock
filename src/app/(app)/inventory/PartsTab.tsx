@@ -7,6 +7,7 @@ import { listParts, createPart, updatePart, deletePart, receiveStock, type PartI
 import type { Part } from "@/types";
 import { PART_CATEGORIES } from "@/lib/constants";
 import { formatCurrency } from "@/lib/format";
+import { getCached, setCached } from "@/lib/db/cache";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -22,8 +23,8 @@ export function PartsTab() {
   const { push } = useToast();
   const isAdmin = currentUser?.role === "admin";
 
-  const [parts, setParts] = useState<Part[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [parts, setParts] = useState<Part[]>(() => (shop && getCached<Part[]>(`parts:${shop.id}`)) || []);
+  const [loading, setLoading] = useState(() => !(shop && getCached(`parts:${shop.id}`)));
   const [search, setSearch] = useState("");
 
   const [showAdd, setShowAdd] = useState(false);
@@ -38,7 +39,9 @@ export function PartsTab() {
 
   const reload = async () => {
     if (!shop) return;
-    setParts(await listParts(shop.id));
+    const fresh = await listParts(shop.id);
+    setCached(`parts:${shop.id}`, fresh);
+    setParts(fresh);
     setLoading(false);
   };
 

@@ -71,6 +71,34 @@ export async function listSales(shopId: string): Promise<Sale[]> {
   return rows.map((row) => mapSale(row, []));
 }
 
+/** Purchase history: most recent sales with their line items already
+ * attached (one bulk query for items instead of one per sale), so a
+ * history list can show what was actually purchased without an extra
+ * click per row. */
+export async function listSalesWithItems(shopId: string, limit = 200): Promise<Sale[]> {
+  const db = await getDb();
+  const saleRows = await db.select<SaleRow[]>(
+    "SELECT * FROM sales WHERE shop_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
+    [shopId, limit]
+  );
+  if (saleRows.length === 0) return [];
+
+  const placeholders = saleRows.map((_, i) => `$${i + 1}`).join(", ");
+  const itemRows = await db.select<SaleItemRow[]>(
+    `SELECT * FROM sale_items WHERE sale_id IN (${placeholders})`,
+    saleRows.map((r) => r.id)
+  );
+  const itemsBySale = new Map<string, SaleItem[]>();
+  for (const row of itemRows) {
+    const item = mapItem(row);
+    const list = itemsBySale.get(item.saleId) ?? [];
+    list.push(item);
+    itemsBySale.set(item.saleId, list);
+  }
+
+  return saleRows.map((row) => mapSale(row, itemsBySale.get(row.id) ?? []));
+}
+
 export async function getSaleById(id: string): Promise<Sale | null> {
   const db = await getDb();
   const saleRows = await db.select<SaleRow[]>("SELECT * FROM sales WHERE id = $1", [id]);

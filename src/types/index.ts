@@ -5,6 +5,8 @@ export type Role = "admin" | "user";
 export interface Shop {
   id: string;
   name: string;
+  /** Data: URL, resized client-side before upload. Local-only for now. */
+  logo: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,6 +18,8 @@ export interface AppUser {
   email: string;
   role: Role;
   createdAt: string;
+  /** Data: URL, resized client-side before upload. Local-only for now. */
+  avatar: string | null;
 }
 
 export type PartCategory = "Engine" | "Brakes" | "Electrical" | "Accessories";

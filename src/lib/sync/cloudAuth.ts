@@ -104,3 +104,31 @@ export async function isCloudConnected(): Promise<boolean> {
   const { data } = await supabase.auth.getSession();
   return Boolean(data.session);
 }
+
+/**
+ * Best-effort: cloud-provisions a staff account via the create-staff-account
+ * Edge Function, so they can sign in on a different device later. Requires
+ * the calling admin to already be cloud-connected (their session is what
+ * authorizes the request) and the function to be deployed — silently no-ops
+ * otherwise, same as owner provisioning at setup, since the shop must stay
+ * fully usable locally either way.
+ */
+export async function provisionStaffInCloud(params: {
+  shopId: string;
+  staffId: string;
+  name: string;
+  email: string;
+  password: string;
+  role: Role;
+}): Promise<ConnectResult> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "No cloud project configured." };
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return { ok: false, error: "This device isn't linked to the cloud yet." };
+
+  const { data, error } = await supabase.functions.invoke("create-staff-account", { body: params });
+  if (error) return { ok: false, error: error.message };
+  if (data?.error) return { ok: false, error: data.error };
+  return { ok: true };
+}

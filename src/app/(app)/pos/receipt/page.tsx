@@ -40,6 +40,10 @@ function ReceiptContent() {
 
       <div className="bg-white text-slate-900 rounded-lg p-6 font-mono text-xs shadow-2xl print:shadow-none print:rounded-none">
         <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
+          {shop?.logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={shop.logo} alt={shop.name} className="h-10 mx-auto object-contain mb-1" />
+          )}
           <p className="font-black text-sm uppercase tracking-wide">{shop?.name ?? "MotoStock"}</p>
           <p className="text-[10px] text-slate-500">Parts &amp; Repairs Receipt</p>
         </div>

@@ -4,23 +4,31 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth/session";
 import { listParts } from "@/lib/db/parts";
 import { listMotorcycles } from "@/lib/db/motorcycles";
+import { getCached, setCached } from "@/lib/db/cache";
 import { StatTile } from "@/components/ui/StatTile";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { CategoryValueChart } from "@/components/dashboard/CategoryValueChart";
 import { HelpTip } from "@/components/ui/HelpTip";
+import { PART_CATEGORIES } from "@/lib/constants";
 import { IconAlert } from "@/components/ui/icons";
 import type { Motorcycle, Part } from "@/types";
 
 export default function DashboardPage() {
   const { shop, currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
-  const [parts, setParts] = useState<Part[]>([]);
-  const [motorcycles, setMotorcycles] = useState<Motorcycle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [parts, setParts] = useState<Part[]>(() => (shop && getCached<Part[]>(`parts:${shop.id}`)) || []);
+  const [motorcycles, setMotorcycles] = useState<Motorcycle[]>(() => (shop && getCached<Motorcycle[]>(`motorcycles:${shop.id}`)) || []);
+  const [loading, setLoading] = useState(() => !(shop && getCached(`parts:${shop.id}`)));
+  const [watchlistSearch, setWatchlistSearch] = useState("");
+  const [watchlistCategory, setWatchlistCategory] = useState("");
 
   useEffect(() => {
     if (!shop) return;
+    // Cached data (if any) is already showing — this refreshes it quietly
+    // instead of blocking the page behind a skeleton on every revisit.
     Promise.all([listParts(shop.id), listMotorcycles(shop.id)]).then(([p, m]) => {
+      setCached(`parts:${shop.id}`, p);
+      setCached(`motorcycles:${shop.id}`, m);
       setParts(p);
       setMotorcycles(m);
       setLoading(false);
@@ -48,6 +56,15 @@ export default function DashboardPage() {
       chartData: Array.from(byCategory.entries()).map(([label, value]) => ({ label, value })),
     };
   }, [parts, motorcycles]);
+
+  const filteredLowStock = useMemo(() => {
+    const q = watchlistSearch.trim().toLowerCase();
+    return metrics.lowStock.filter((p) => {
+      const matchesQuery = !q || p.partName.toLowerCase().includes(q) || p.partNumber.toLowerCase().includes(q);
+      const matchesCategory = !watchlistCategory || p.category === watchlistCategory;
+      return matchesQuery && matchesCategory;
+    });
+  }, [metrics.lowStock, watchlistSearch, watchlistCategory]);
 
   return (
     <div className="space-y-6 animate-slideUp">
@@ -86,9 +103,35 @@ export default function DashboardPage() {
             Low Stock Watchlist
           </h3>
           <p className="text-[11px] text-slate-500 mb-3">Parts at or below their minimum threshold.</p>
+
+          {metrics.lowStock.length > 0 && (
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="text"
+                placeholder="Search..."
+                value={watchlistSearch}
+                onChange={(e) => setWatchlistSearch(e.target.value)}
+                className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+              />
+              <select
+                value={watchlistCategory}
+                onChange={(e) => setWatchlistCategory(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none focus:border-blue-500 font-mono shrink-0"
+              >
+                <option value="">All categories</option>
+                {PART_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
             {metrics.lowStock.length === 0 && <p className="text-[11px] text-slate-600 font-mono py-4 text-center">Nothing flagged right now.</p>}
-            {metrics.lowStock.map((p) => (
+            {metrics.lowStock.length > 0 && filteredLowStock.length === 0 && (
+              <p className="text-[11px] text-slate-600 font-mono py-4 text-center">No flagged parts match your search.</p>
+            )}
+            {filteredLowStock.map((p) => (
               <div key={p.id} className="flex items-center justify-between bg-amber-950/20 border border-amber-900/30 rounded-lg px-3 py-2">
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold text-amber-200 truncate">{p.partName}</p>

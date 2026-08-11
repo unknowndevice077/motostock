@@ -9,6 +9,7 @@ import { createSale, type CartLine } from "@/lib/db/sales";
 import { listRepairJobs, addPartToJob } from "@/lib/db/repairJobs";
 import type { Part, RepairJob } from "@/types";
 import { formatCurrency } from "@/lib/format";
+import { getCached, setCached } from "@/lib/db/cache";
 import { Button } from "@/components/ui/Button";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { HelpTip } from "@/components/ui/HelpTip";
@@ -22,8 +23,8 @@ export default function PosPage() {
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>("sale");
-  const [parts, setParts] = useState<Part[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [parts, setParts] = useState<Part[]>(() => (shop && getCached<Part[]>(`parts:${shop.id}`)) || []);
+  const [loading, setLoading] = useState(() => !(shop && getCached(`parts:${shop.id}`)));
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customerName, setCustomerName] = useState("");
@@ -37,6 +38,7 @@ export default function PosPage() {
   useEffect(() => {
     if (!shop) return;
     listParts(shop.id).then((p) => {
+      setCached(`parts:${shop.id}`, p);
       setParts(p);
       setLoading(false);
     });
