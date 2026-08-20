@@ -24,6 +24,7 @@ import { MonthlyRevenueChart } from "@/components/dashboard/MonthlyRevenueChart"
 import { CategoryValueChart } from "@/components/dashboard/CategoryValueChart";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { HelpTip } from "@/components/ui/HelpTip";
+import { IconChart, IconBox, IconTag, IconUser, IconReceipt } from "@/components/ui/icons";
 
 const MAX_RANGE_MONTHS = 240; // 20 years — a sane ceiling, not a preset
 
@@ -134,9 +135,12 @@ export default function ReportsPage() {
         <p className="text-xs text-slate-400">How the shop is doing, month by month.</p>
       </div>
 
-      <div>
-        <h3 className="text-sm font-bold text-white">Stock Asset Evaluation</h3>
-        <p className="text-xs text-slate-400">What&apos;s sitting in inventory right now, valued at cost and at retail — separate from the revenue history below.</p>
+      <div className="flex items-center gap-2">
+        <IconBox width={16} height={16} className="text-slate-400" />
+        <div>
+          <h3 className="text-sm font-bold text-white">Stock Asset Evaluation</h3>
+          <p className="text-xs text-slate-400">What&apos;s sitting in inventory right now, valued at cost and at retail — separate from the revenue history below.</p>
+        </div>
       </div>
 
       {stockLoading ? (
@@ -158,9 +162,12 @@ export default function ReportsPage() {
         </div>
       )}
 
-      <div>
-        <h3 className="text-sm font-bold text-white">Revenue History</h3>
-        <p className="text-xs text-slate-400">Completed sales and repair jobs, month by month.</p>
+      <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
+        <IconChart width={16} height={16} className="text-slate-400" />
+        <div>
+          <h3 className="text-sm font-bold text-white">Revenue History</h3>
+          <p className="text-xs text-slate-400">Completed sales and repair jobs, month by month.</p>
+        </div>
       </div>
 
       {loading ? (
@@ -172,8 +179,9 @@ export default function ReportsPage() {
           <StatTile label="Avg. Transaction" value={current && current.transactionCount > 0 ? current.total / current.transactionCount : 0} format="currency" accent="primary" />
           <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
             <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400 font-mono">Vs. Last Month</p>
-            <p className={`text-2xl font-black mt-1 ${changePct === null ? "text-slate-500" : changePct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-              {changePct === null ? "—" : `${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%`}
+            <p className={`text-2xl font-black mt-1 flex items-center gap-1 ${changePct === null ? "text-slate-500" : changePct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {changePct !== null && <span className="text-lg leading-none">{changePct >= 0 ? "▲" : "▼"}</span>}
+              {changePct === null ? "—" : `${Math.abs(changePct).toFixed(1)}%`}
             </p>
           </div>
           <StatTile label="Repair Revenue Share" value={current && current.total > 0 ? Math.round((current.repairsRevenue / current.total) * 100) : 0} suffix="%" accent="primary" />
@@ -225,9 +233,9 @@ export default function ReportsPage() {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[26rem]">
           <table className="w-full text-xs">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-slate-900">
               <tr className="border-b border-slate-800 text-left text-[10px] uppercase font-mono text-slate-500">
                 <th className="px-4 py-2.5 font-medium">Month</th>
                 <th className="px-4 py-2.5 font-medium text-right">Parts Sales</th>
@@ -265,48 +273,72 @@ export default function ReportsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-6">
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
-              Top Parts {isCurrentMonth ? "This Month" : selectedMonthData ? `— ${monthLabel(selectedMonthData.month)}` : ""}
-            </h3>
+            <div className="flex items-center gap-2 mb-1">
+              <IconTag width={14} height={14} className="text-slate-400" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
+                Top Parts {isCurrentMonth ? "This Month" : selectedMonthData ? `— ${monthLabel(selectedMonthData.month)}` : ""}
+              </h3>
+            </div>
             <p className="text-[11px] text-slate-500 mb-3">By revenue, POS sales only.</p>
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
               {!detailLoading && monthTopParts.length === 0 && <p className="text-[11px] text-slate-600 font-mono py-4 text-center">No sales that month.</p>}
-              {(detailLoading ? topParts : monthTopParts).map((p) => (
-                <div key={p.partNumber} className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-lg px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-slate-200 truncate">{p.partName}</p>
-                    <p className="text-[9px] text-slate-500 font-mono truncate">{p.qtySold} sold</p>
+              {(() => {
+                const list = detailLoading ? topParts : monthTopParts;
+                const maxRevenue = Math.max(1, ...list.map((p) => p.revenue));
+                return list.map((p, i) => (
+                  <div key={p.partNumber} className="relative bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 overflow-hidden">
+                    <div className="absolute inset-y-0 left-0 bg-blue-500/10" style={{ width: `${Math.max(4, (p.revenue / maxRevenue) * 100)}%` }} />
+                    <div className="relative flex items-center gap-2.5">
+                      <span className="shrink-0 h-5 w-5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold font-mono flex items-center justify-center">{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-bold text-slate-200 truncate">{p.partName}</p>
+                        <p className="text-[9px] text-slate-500 font-mono truncate">{p.qtySold} sold</p>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-slate-300 shrink-0">{formatCurrency(p.revenue)}</span>
+                    </div>
                   </div>
-                  <span className="text-[10px] font-mono font-bold text-slate-300 shrink-0 ml-2">{formatCurrency(p.revenue)}</span>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">Top Customers This Month</h3>
+            <div className="flex items-center gap-2 mb-1">
+              <IconUser width={14} height={14} className="text-slate-400" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">Top Customers This Month</h3>
+            </div>
             <p className="text-[11px] text-slate-500 mb-3">By total spend, parts + repair jobs combined.</p>
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
               {topCustomers.length === 0 && <p className="text-[11px] text-slate-600 font-mono py-4 text-center">No customer-attributed sales yet this month.</p>}
-              {topCustomers.map((c) => (
-                <Link
-                  key={c.customerId}
-                  href={`/customers/detail?customerId=${c.customerId}`}
-                  className="flex items-center justify-between bg-slate-950 border border-slate-800 hover:border-blue-700 rounded-lg px-3 py-2 transition-colors duration-150"
-                >
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-slate-200 truncate">{c.name}</p>
-                    <p className="text-[9px] text-slate-500 font-mono truncate">{c.transactionCount} transaction{c.transactionCount === 1 ? "" : "s"}</p>
-                  </div>
-                  <span className="text-[10px] font-mono font-bold text-slate-300 shrink-0 ml-2">{formatCurrency(c.total)}</span>
-                </Link>
-              ))}
+              {(() => {
+                const maxSpend = Math.max(1, ...topCustomers.map((c) => c.total));
+                return topCustomers.map((c, i) => (
+                  <Link
+                    key={c.customerId}
+                    href={`/customers/detail?customerId=${c.customerId}`}
+                    className="relative block bg-slate-950 border border-slate-800 hover:border-blue-700 rounded-lg px-3 py-2 overflow-hidden transition-colors duration-150"
+                  >
+                    <div className="absolute inset-y-0 left-0 bg-blue-500/10" style={{ width: `${Math.max(4, (c.total / maxSpend) * 100)}%` }} />
+                    <div className="relative flex items-center gap-2.5">
+                      <span className="shrink-0 h-5 w-5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold font-mono flex items-center justify-center">{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-bold text-slate-200 truncate">{c.name}</p>
+                        <p className="text-[9px] text-slate-500 font-mono truncate">{c.transactionCount} transaction{c.transactionCount === 1 ? "" : "s"}</p>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-slate-300 shrink-0">{formatCurrency(c.total)}</span>
+                    </div>
+                  </Link>
+                ));
+              })()}
             </div>
           </div>
         </div>
 
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">Transactions</h3>
+          <div className="flex items-center gap-2 mb-1">
+            <IconReceipt width={14} height={14} className="text-slate-400" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">Transactions</h3>
+          </div>
           <p className="text-[11px] text-slate-500 mb-3">{monthTransactions.length} sale{monthTransactions.length === 1 ? "" : "s"}/job{monthTransactions.length === 1 ? "" : "s"} that made up this month.</p>
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {detailLoading && <p className="text-[11px] text-slate-500 font-mono py-4 text-center">Loading...</p>}

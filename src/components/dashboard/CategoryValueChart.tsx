@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { formatCurrency } from "@/lib/format";
 
 export interface CategoryValue {
   label: string;
@@ -36,7 +37,7 @@ export function CategoryValueChart({ data }: { data: CategoryValue[] }) {
             <div className="flex items-center justify-between text-[11px] font-mono mb-1">
               <span className={`transition-colors ${isHovered ? "text-white" : "text-slate-400"}`}>{d.label}</span>
               <span className={`font-bold tabular-nums transition-colors ${isHovered ? "text-blue-300" : "text-slate-300"}`}>
-                ${d.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {formatCurrency(d.value)}
               </span>
             </div>
             <div className="h-2.5 w-full bg-slate-800/60 rounded-full overflow-hidden">

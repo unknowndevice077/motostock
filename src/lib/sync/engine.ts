@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDb } from "@/lib/db/client";
 import { getSupabase } from "@/lib/supabase/client";
+import { withTimeout } from "./withTimeout";
 
 type Row = Record<string, unknown>;
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -98,6 +99,14 @@ export type SyncOutcome =
   | { ran: true; pushed: number; pulled: number }
   | { ran: false; reason: "not-configured" | "not-connected" | "offline" | "error"; error?: string };
 
+// A whole cycle touches ~10 tables sequentially — generous, but bounded, so
+// a stalled connection (a waking free-tier project, a dropped network mid-
+// cycle) can never wedge this open forever. Matters most for the very first
+// cycle after "Join existing shop", which runs synchronously before that
+// screen's spinner can clear; the routine 60s background cycle benefits the
+// same way.
+const SYNC_TIMEOUT_MS = 90000;
+
 /**
  * One push+pull cycle for every syncable table, in dependency order (parts
  * before sales, since sales reference parts). No-ops quietly if there's no
@@ -109,10 +118,10 @@ export async function runSync(shopId: string): Promise<SyncOutcome> {
   if (!supabase) return { ran: false, reason: "not-configured" };
   if (typeof navigator !== "undefined" && !navigator.onLine) return { ran: false, reason: "offline" };
 
-  let pushed = 0;
-  let pulled = 0;
+  const syncOnce = async (): Promise<SyncOutcome> => {
+    let pushed = 0;
+    let pulled = 0;
 
-  try {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) return { ran: false, reason: "not-connected" };
 
@@ -146,6 +155,10 @@ export async function runSync(shopId: string): Promise<SyncOutcome> {
     await pullChildren(supabase, db, "repair_job_parts", "job_id", pulledJobs.map((r) => r.id as string));
 
     return { ran: true, pushed, pulled };
+  };
+
+  try {
+    return await withTimeout(syncOnce(), SYNC_TIMEOUT_MS, "Sync");
   } catch (err) {
     return { ran: false, reason: "error", error: err instanceof Error ? err.message : String(err) };
   }

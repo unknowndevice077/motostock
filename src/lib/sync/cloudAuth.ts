@@ -1,7 +1,10 @@
 import { getSupabase } from "@/lib/supabase/client";
+import { withTimeout } from "./withTimeout";
 import type { Role } from "@/types";
 
 export type ConnectResult = { ok: true } | { ok: false; error: string; needsEmailConfirmation?: boolean };
+
+const CLOUD_TIMEOUT_MS = 20000; // generous enough for a free-tier project waking from pause, never indefinite
 
 /**
  * First-time cloud provisioning for a brand-new shop: creates the Supabase
@@ -23,34 +26,46 @@ export async function provisionShopInCloud(params: {
 
   const { shopId, shopName, adminId, adminName, email, password } = params;
 
-  let signUp = await supabase.auth.signUp({ email, password });
-  if (signUp.error) {
-    // Most likely: a previous attempt already created the auth account.
-    const retry = await supabase.auth.signInWithPassword({ email, password });
-    if (retry.error) return { ok: false, error: signUp.error.message };
-    signUp = { data: retry.data, error: null } as typeof signUp;
+  try {
+    let signUp = await withTimeout(supabase.auth.signUp({ email, password }), CLOUD_TIMEOUT_MS, "Sign-up");
+    if (signUp.error) {
+      // Most likely: a previous attempt already created the auth account.
+      const retry = await withTimeout(supabase.auth.signInWithPassword({ email, password }), CLOUD_TIMEOUT_MS, "Sign-in");
+      if (retry.error) return { ok: false, error: signUp.error.message };
+      signUp = { data: retry.data, error: null } as typeof signUp;
+    }
+
+    if (!signUp.data.session) {
+      return { ok: false, error: "Check your email to confirm your account, then try connecting again.", needsEmailConfirmation: true };
+    }
+
+    const authUserId = signUp.data.user!.id;
+
+    const { error: shopError } = await withTimeout(supabase.from("shops").upsert({ id: shopId, name: shopName }), CLOUD_TIMEOUT_MS, "Shop setup");
+    if (shopError) return { ok: false, error: shopError.message };
+
+    const { error: userError } = await withTimeout(
+      supabase.from("app_users").upsert({
+        id: adminId,
+        shop_id: shopId,
+        auth_user_id: authUserId,
+        name: adminName,
+        email: email.toLowerCase().trim(),
+        role: "admin",
+      }),
+      CLOUD_TIMEOUT_MS,
+      "Account setup"
+    );
+    if (userError) return { ok: false, error: userError.message };
+
+    return { ok: true };
+  } catch (err) {
+    // Covers a timed-out call above and any other unexpected network/client
+    // exception — this boundary always returns a clean result, never throws,
+    // so a stalled connection can't leave a caller's "loading" state stuck
+    // forever with no error surfaced.
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't reach the cloud." };
   }
-
-  if (!signUp.data.session) {
-    return { ok: false, error: "Check your email to confirm your account, then try connecting again.", needsEmailConfirmation: true };
-  }
-
-  const authUserId = signUp.data.user!.id;
-
-  const { error: shopError } = await supabase.from("shops").upsert({ id: shopId, name: shopName });
-  if (shopError) return { ok: false, error: shopError.message };
-
-  const { error: userError } = await supabase.from("app_users").upsert({
-    id: adminId,
-    shop_id: shopId,
-    auth_user_id: authUserId,
-    name: adminName,
-    email: email.toLowerCase().trim(),
-    role: "admin",
-  });
-  if (userError) return { ok: false, error: userError.message };
-
-  return { ok: true };
 }
 
 export interface RemoteShopMembership {
@@ -70,32 +85,43 @@ export async function joinExistingShop(email: string, password: string): Promise
   const supabase = getSupabase();
   if (!supabase) return { ok: false, error: "No cloud project configured." };
 
-  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-  if (signInError || !signInData.session) {
-    return { ok: false, error: "Couldn't sign in. Check your email and password, or this shop may not be connected to the cloud yet." };
+  try {
+    const { data: signInData, error: signInError } = await withTimeout(supabase.auth.signInWithPassword({ email, password }), CLOUD_TIMEOUT_MS, "Sign-in");
+    if (signInError || !signInData.session) {
+      return { ok: false, error: "Couldn't sign in. Check your email and password, or this shop may not be connected to the cloud yet." };
+    }
+
+    const { data: userRow, error: userError } = await withTimeout(
+      supabase.from("app_users").select("id, shop_id, name, email, role").eq("auth_user_id", signInData.user.id).single(),
+      CLOUD_TIMEOUT_MS,
+      "Loading account"
+    );
+    if (userError || !userRow) return { ok: false, error: "Signed in, but no shop membership was found for this account." };
+
+    const { data: shopRow, error: shopError } = await withTimeout(
+      supabase.from("shops").select("id, name").eq("id", userRow.shop_id).single(),
+      CLOUD_TIMEOUT_MS,
+      "Loading shop"
+    );
+    if (shopError || !shopRow) return { ok: false, error: "Signed in, but couldn't load the shop record." };
+
+    return {
+      ok: true,
+      membership: {
+        shopId: shopRow.id,
+        shopName: shopRow.name,
+        appUserId: userRow.id,
+        name: userRow.name,
+        email: userRow.email,
+        role: userRow.role,
+      },
+    };
+  } catch (err) {
+    // Same rationale as provisionShopInCloud above — never let a stalled
+    // network call throw out of this boundary and strand the caller's
+    // "loading" state with no error shown.
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't reach the cloud." };
   }
-
-  const { data: userRow, error: userError } = await supabase
-    .from("app_users")
-    .select("id, shop_id, name, email, role")
-    .eq("auth_user_id", signInData.user.id)
-    .single();
-  if (userError || !userRow) return { ok: false, error: "Signed in, but no shop membership was found for this account." };
-
-  const { data: shopRow, error: shopError } = await supabase.from("shops").select("id, name").eq("id", userRow.shop_id).single();
-  if (shopError || !shopRow) return { ok: false, error: "Signed in, but couldn't load the shop record." };
-
-  return {
-    ok: true,
-    membership: {
-      shopId: shopRow.id,
-      shopName: shopRow.name,
-      appUserId: userRow.id,
-      name: userRow.name,
-      email: userRow.email,
-      role: userRow.role,
-    },
-  };
 }
 
 /**

@@ -1,0 +1,15 @@
+# Force LF line endings for everything text-based, regardless of the
+# checking-out machine's core.autocrlf setting. This matters well beyond
+# style: src-tauri/migrations/*.sql gets embedded verbatim into the compiled
+# binary via include_str!(), and Tauri's migration runner (sqlx underneath)
+# checksums that exact byte content against what's already recorded in an
+# existing local database. A GitHub Actions Windows runner defaults to
+# autocrlf=true, so without this file, a fresh checkout there converts LF to
+# CRLF, silently changing every migration's bytes and its checksum — any
+# database that already recorded "migration 1 applied" against the LF
+# version (e.g. from a locally-built dev copy, or any earlier release) would
+# then fail to open with "migration N was previously applied but has been
+# modified" against the CRLF-checksummed CI build. Pinning LF here makes the
+# embedded bytes identical no matter which OS or autocrlf setting checked
+# the repo out.
+* text=auto eol=lf
