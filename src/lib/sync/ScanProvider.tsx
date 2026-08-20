@@ -37,7 +37,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     if (!shop || !connected) return;
     const unsubscribe = subscribeScanEvents(shop.id, (event) => {
       setRecentScans((prev) => [event, ...prev].slice(0, MAX_RECENT));
-      push("info", `Scanned: ${event.partName} — ${event.stock} left`);
+      push("info", event.repairJobId ? `Scanned: ${event.partName} — added to an open job` : `Scanned: ${event.partName} — ${event.stock} left`);
       listeners.current.forEach((listener) => listener(event));
     });
     return unsubscribe;

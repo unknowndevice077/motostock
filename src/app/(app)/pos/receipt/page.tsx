@@ -29,6 +29,13 @@ function ReceiptContent() {
 
   return (
     <div className="max-w-sm mx-auto space-y-4 animate-fadeIn">
+      {/* Printing here goes through the OS print dialog like any other app —
+          there's no direct printer driver code, so it works with whatever
+          printer Windows already has installed, including thermal receipt
+          printers (they install as a normal Windows printer). This just
+          makes sure the page itself is sized for an 80mm roll instead of
+          defaulting to a full A4/Letter sheet when that dialog opens. */}
+      <style>{"@media print { @page { size: 80mm auto; margin: 4mm; } }"}</style>
       <div className="print:hidden flex items-center gap-2">
         <Button onClick={() => window.print()}>
           <IconPrinter width={14} height={14} /> Print Receipt
@@ -36,6 +43,11 @@ function ReceiptContent() {
         <Link href="/pos">
           <Button variant="secondary">New Sale</Button>
         </Link>
+        {sale.customerId && (
+          <Link href={`/customers/detail?customerId=${sale.customerId}`} className="text-[11px] font-mono text-blue-400 hover:text-blue-300 ml-1">
+            View customer history →
+          </Link>
+        )}
       </div>
 
       <div className="bg-white text-slate-900 rounded-lg p-6 font-mono text-xs shadow-2xl print:shadow-none print:rounded-none">
@@ -61,7 +73,7 @@ function ReceiptContent() {
               <tr key={item.id}>
                 <td className="py-1 align-top">
                   <p>{item.partName}</p>
-                  <p className="text-[9px] text-slate-500">{item.partNumber} × {item.qty}</p>
+                  {item.partId && <p className="text-[9px] text-slate-500">{item.partNumber} × {item.qty}</p>}
                 </td>
                 <td className="py-1 text-right align-top">{formatCurrency(item.qty * item.unitPrice)}</td>
               </tr>

@@ -12,6 +12,24 @@ html, body {
   height: 100%;
 }
 
+/* Hide native number-input spinners everywhere. Custom +/- buttons (POS
+   cart quantity) are the only stepper control in the app; every other
+   numeric field (price, stock, labor fee, etc.) is typed directly, so the
+   browser's own white up/down arrows just looked out of place next to
+   everything else here — this is the reliable, plain-CSS way to remove
+   them (Tailwind's arbitrary-property utility for this is inconsistent
+   across WebView2/Chromium versions). */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
 @layer utilities {
   @keyframes fadeIn {
     from { opacity: 0; }

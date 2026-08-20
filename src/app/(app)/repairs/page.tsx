@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/session";
 import { useToast } from "@/components/ui/Toast";
 import { listRepairJobs, createRepairJob, type RepairJobInput } from "@/lib/db/repairJobs";
-import type { RepairJob, RepairJobStatus } from "@/types";
+import type { RepairJob, RepairJobStatus, Customer } from "@/types";
 import { formatCurrency } from "@/lib/format";
 import { isWithinDateRange } from "@/lib/dateRange";
 import { getCached, setCached } from "@/lib/db/cache";
@@ -17,9 +17,10 @@ import { TableSkeleton } from "@/components/ui/Skeleton";
 import { TextField, TextAreaField } from "@/components/ui/FormField";
 import { HelpTip } from "@/components/ui/HelpTip";
 import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
+import { CustomerPicker } from "@/components/ui/CustomerPicker";
 import { IconPlus, IconWrench } from "@/components/ui/icons";
 
-const emptyForm: RepairJobInput = { customerName: "", customerPhone: "", motorcycleDesc: "", laborFee: 0, notes: "" };
+const emptyForm = { motorcycleDesc: "", laborFee: 0, notes: "" };
 
 const statusClasses: Record<RepairJobStatus, string> = {
   open: "bg-slate-950 text-slate-300 border border-slate-700",
@@ -37,7 +38,8 @@ export default function RepairsPage() {
   const [jobs, setJobs] = useState<RepairJob[]>(() => (shop && getCached<RepairJob[]>(`repair_jobs:${shop.id}`)) || []);
   const [loading, setLoading] = useState(() => !(shop && getCached(`repair_jobs:${shop.id}`)));
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState<RepairJobInput>(emptyForm);
+  const [form, setForm] = useState(emptyForm);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -65,10 +67,19 @@ export default function RepairsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!shop) return;
-    const job = await createRepairJob(shop.id, currentUser?.id ?? null, form);
+    if (!shop || !customer) return;
+    const input: RepairJobInput = {
+      customerId: customer.id,
+      customerName: customer.name,
+      customerPhone: customer.phone ?? "",
+      motorcycleDesc: form.motorcycleDesc,
+      laborFee: form.laborFee,
+      notes: form.notes,
+    };
+    const job = await createRepairJob(shop.id, currentUser?.id ?? null, input);
     push("success", "Repair job created.");
     setForm(emptyForm);
+    setCustomer(null);
     setShowAdd(false);
     router.push(`/repairs/detail?jobId=${job.id}`);
   };
@@ -123,7 +134,7 @@ export default function RepairsPage() {
             className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 min-w-[200px] transition-all duration-200"
           />
           <DateRangeFilter from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
-          <Button onClick={() => { setForm(emptyForm); setShowAdd(true); }}>
+          <Button onClick={() => { setForm(emptyForm); setCustomer(null); setShowAdd(true); }}>
             <IconPlus width={14} height={14} /> New Job
           </Button>
         </div>
@@ -138,14 +149,11 @@ export default function RepairsPage() {
       {showAdd && (
         <Modal title="New Repair Job" onClose={() => setShowAdd(false)}>
           <form onSubmit={handleCreate} className="space-y-3">
-            <TextField label="Customer Name" required value={form.customerName} onChange={(v) => setForm({ ...form, customerName: v })} />
-            <div className="grid grid-cols-2 gap-2">
-              <TextField label="Phone (optional)" value={form.customerPhone} onChange={(v) => setForm({ ...form, customerPhone: v })} />
-              <TextField label="Labor Fee (₱)" type="number" step="0.01" value={form.laborFee} onChange={(v) => setForm({ ...form, laborFee: Number(v) || 0 })} />
-            </div>
+            {shop && <CustomerPicker shopId={shop.id} label="Customer Name" required value={customer} onChange={setCustomer} />}
+            <TextField label="Labor Fee (₱)" type="number" step="0.01" value={form.laborFee} onChange={(v) => setForm({ ...form, laborFee: Number(v) || 0 })} />
             <TextField label="Motorcycle (model / plate)" value={form.motorcycleDesc} onChange={(v) => setForm({ ...form, motorcycleDesc: v })} />
             <TextAreaField label="Notes" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} placeholder="What's being worked on..." />
-            <Button type="submit" className="w-full">Create Job</Button>
+            <Button type="submit" className="w-full" disabled={!customer}>Create Job</Button>
           </form>
         </Modal>
       )}

@@ -27,6 +27,12 @@ pub fn run() {
       sql: include_str!("../migrations/0004_add_cloud_provisioned.sql"),
       kind: MigrationKind::Up,
     },
+    Migration {
+      version: 5,
+      description: "customers_and_billing",
+      sql: include_str!("../migrations/0005_customers_and_billing.sql"),
+      kind: MigrationKind::Up,
+    },
   ];
 
   let builder = tauri::Builder::default().plugin(

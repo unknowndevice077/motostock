@@ -14,7 +14,11 @@ export async function checkForUpdate(): Promise<Update | null> {
     await update.downloadAndInstall();
     return update;
   } catch (err) {
-    console.error("Update check failed:", err);
+    // Not an application error — no release published yet, offline, or a
+    // transient network hiccup are all normal, expected outcomes here.
+    // console.warn (not .error) so Next's dev overlay doesn't treat a
+    // silently-handled "nothing to update" as a crash.
+    console.warn("Update check found nothing (this is normal until a release is published):", err);
     return null;
   }
 }

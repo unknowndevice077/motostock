@@ -81,6 +81,17 @@ export async function verifyLogin(email: string, password: string): Promise<AppU
   return rows.length ? mapUser(rows[0]) : null;
 }
 
+// No dirty=1 here (unlike createUser) — app_users isn't one of the tables
+// the generic sync engine pushes (see PARENT_TABLES in lib/sync/engine.ts);
+// its cloud side is managed only through provisionShopInCloud /
+// provisionStaffInCloud, neither of which touches password_hash (Supabase
+// Auth owns the real password separately).
+export async function updatePassword(id: string, newPassword: string): Promise<void> {
+  const db = await getDb();
+  const passwordHash = await hashPassword(newPassword);
+  await db.execute("UPDATE app_users SET password_hash = $1, updated_at = $2 WHERE id = $3", [passwordHash, nowIso(), id]);
+}
+
 export async function updateAvatar(id: string, avatar: string | null): Promise<void> {
   const db = await getDb();
   await db.execute("UPDATE app_users SET avatar = $1, updated_at = $2 WHERE id = $3", [avatar, nowIso(), id]);

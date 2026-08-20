@@ -6,7 +6,7 @@ type Row = Record<string, unknown>;
 type Db = Awaited<ReturnType<typeof getDb>>;
 
 /** Parent tables: have shop_id + dirty + updated_at, sync as standalone units. */
-const PARENT_TABLES = ["parts", "motorcycles", "sales", "repair_jobs", "stock_receipts"] as const;
+const PARENT_TABLES = ["customers", "parts", "motorcycles", "sales", "repair_jobs", "stock_receipts"] as const;
 
 /** Immutable child tables, keyed to a parent — pushed/pulled alongside it since they never change after creation. */
 const CHILDREN: { table: string; parentTable: string; parentIdCol: string }[] = [
@@ -118,8 +118,9 @@ export async function runSync(shopId: string): Promise<SyncOutcome> {
 
     const db = await getDb();
 
-    // Push standalone parents first...
-    for (const table of ["parts", "motorcycles", "stock_receipts"] as const) {
+    // Push standalone parents first — customers before sales/repair_jobs,
+    // since both reference customer_id.
+    for (const table of ["customers", "parts", "motorcycles", "stock_receipts"] as const) {
       pushed += (await pushDirty(supabase, db, table, shopId)).length;
     }
     // ...then parents with children, pushing each parent's children right after it.
@@ -132,7 +133,7 @@ export async function runSync(shopId: string): Promise<SyncOutcome> {
     await pushChildren(supabase, db, "repair_job_parts", "job_id", pushedJobIds);
 
     // Pull standalone parents first...
-    for (const table of ["parts", "motorcycles", "stock_receipts"] as const) {
+    for (const table of ["customers", "parts", "motorcycles", "stock_receipts"] as const) {
       pulled += (await pullParentTable(supabase, db, table, shopId)).length;
     }
     // ...then parents with children, pulling each parent's children right after it.

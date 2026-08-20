@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "3.1.0"
+version = "3.2.0"
 description = "MotoStock - parts inventory, repairs, and POS for motor shops"
 authors = ["you"]
 license = ""

@@ -1,11 +1,14 @@
 import { getDb, newId, nowIso } from "./client";
 import { decrementPartStock } from "./parts";
-import type { RepairJob, RepairJobPart, RepairJobStatus } from "@/types";
+import { createBilledSale } from "./sales";
+import type { CartLine } from "./sales";
+import type { RepairJob, RepairJobPart, RepairJobStatus, Sale } from "@/types";
 
 interface JobRow {
   id: string;
   shop_id: string;
   user_id: string | null;
+  customer_id: string | null;
   customer_name: string;
   customer_phone: string | null;
   motorcycle_desc: string | null;
@@ -15,6 +18,7 @@ interface JobRow {
   total: number;
   created_at: string;
   completed_at: string | null;
+  sale_id: string | null;
 }
 
 interface JobPartRow {
@@ -36,6 +40,7 @@ function mapJob(row: JobRow, parts: RepairJobPart[]): RepairJob {
     id: row.id,
     shopId: row.shop_id,
     userId: row.user_id,
+    customerId: row.customer_id,
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
     motorcycleDesc: row.motorcycle_desc,
@@ -45,6 +50,7 @@ function mapJob(row: JobRow, parts: RepairJobPart[]): RepairJob {
     total: row.total,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+    saleId: row.sale_id,
     parts,
   };
 }
@@ -63,6 +69,7 @@ async function recomputeJobTotal(db: Awaited<ReturnType<typeof getDb>>, jobId: s
 }
 
 export interface RepairJobInput {
+  customerId: string | null;
   customerName: string;
   customerPhone: string;
   motorcycleDesc: string;
@@ -75,12 +82,12 @@ export async function createRepairJob(shopId: string, userId: string | null, inp
   const id = newId();
   const now = nowIso();
   await db.execute(
-    `INSERT INTO repair_jobs (id, shop_id, user_id, customer_name, customer_phone, motorcycle_desc, status, labor_fee, notes, total, created_at, updated_at, dirty)
-     VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8, $9, $10, $11, 1)`,
-    [id, shopId, userId, input.customerName, input.customerPhone || null, input.motorcycleDesc || null, input.laborFee, input.notes || null, input.laborFee, now, now]
+    `INSERT INTO repair_jobs (id, shop_id, user_id, customer_id, customer_name, customer_phone, motorcycle_desc, status, labor_fee, notes, total, created_at, updated_at, dirty)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $9, $10, $11, $12, 1)`,
+    [id, shopId, userId, input.customerId, input.customerName, input.customerPhone || null, input.motorcycleDesc || null, input.laborFee, input.notes || null, input.laborFee, now, now]
   );
   return mapJob(
-    { id, shop_id: shopId, user_id: userId, customer_name: input.customerName, customer_phone: input.customerPhone || null, motorcycle_desc: input.motorcycleDesc || null, status: "open", labor_fee: input.laborFee, notes: input.notes || null, total: input.laborFee, created_at: now, completed_at: null },
+    { id, shop_id: shopId, user_id: userId, customer_id: input.customerId, customer_name: input.customerName, customer_phone: input.customerPhone || null, motorcycle_desc: input.motorcycleDesc || null, status: "open", labor_fee: input.laborFee, notes: input.notes || null, total: input.laborFee, created_at: now, completed_at: null, sale_id: null },
     []
   );
 }
@@ -145,4 +152,28 @@ export async function getRepairJob(id: string): Promise<RepairJob | null> {
   if (!jobRows.length) return null;
   const partRows = await db.select<JobPartRow[]>("SELECT * FROM repair_job_parts WHERE job_id = $1", [id]);
   return mapJob(jobRows[0], partRows.map(mapJobPart));
+}
+
+/**
+ * Turns a repair job's parts + labor fee into one POS receipt — the "Bill &
+ * Complete" action. Builds the sale directly via `createBilledSale` rather
+ * than the regular `createSale` (which would decrement stock a second
+ * time; each part already came out of inventory when it was added to the
+ * job), links the job back to the new sale, and marks it completed.
+ */
+export async function billAndCompleteJob(shopId: string, userId: string | null, jobId: string): Promise<Sale> {
+  const job = await getRepairJob(jobId);
+  if (!job) throw new Error("Repair job not found.");
+  if (job.saleId) throw new Error("This job has already been billed.");
+
+  const lines: CartLine[] = job.parts.map((p) => ({ partId: p.partId, partName: p.partName, partNumber: p.partNumber, qty: p.qty, unitPrice: p.unitPrice }));
+  const sale = await createBilledSale(shopId, userId, job.customerId, job.customerName, lines, job.laborFee);
+
+  const db = await getDb();
+  const now = nowIso();
+  await db.execute(
+    "UPDATE repair_jobs SET sale_id = $1, status = 'completed', completed_at = $2, updated_at = $2, dirty = 1 WHERE id = $3",
+    [sale.id, now, jobId]
+  );
+  return sale;
 }

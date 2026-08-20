@@ -6,6 +6,7 @@ interface SaleRow {
   id: string;
   shop_id: string;
   user_id: string | null;
+  customer_id: string | null;
   customer_name: string | null;
   total: number;
   created_at: string;
@@ -14,7 +15,7 @@ interface SaleRow {
 interface SaleItemRow {
   id: string;
   sale_id: string;
-  part_id: string;
+  part_id: string | null;
   part_name: string;
   part_number: string;
   qty: number;
@@ -26,7 +27,7 @@ function mapItem(row: SaleItemRow): SaleItem {
 }
 
 function mapSale(row: SaleRow, items: SaleItem[]): Sale {
-  return { id: row.id, shopId: row.shop_id, userId: row.user_id, customerName: row.customer_name, total: row.total, createdAt: row.created_at, items };
+  return { id: row.id, shopId: row.shop_id, userId: row.user_id, customerId: row.customer_id, customerName: row.customer_name, total: row.total, createdAt: row.created_at, items };
 }
 
 export interface CartLine {
@@ -38,7 +39,7 @@ export interface CartLine {
 }
 
 /** Creates a POS sale, snapshots line items, and decrements part stock for each line. */
-export async function createSale(shopId: string, userId: string | null, customerName: string | null, lines: CartLine[]): Promise<Sale> {
+export async function createSale(shopId: string, userId: string | null, customerId: string | null, customerName: string | null, lines: CartLine[]): Promise<Sale> {
   if (lines.length === 0) throw new Error("Cannot create a sale with no items.");
   const db = await getDb();
   const id = newId();
@@ -46,9 +47,9 @@ export async function createSale(shopId: string, userId: string | null, customer
   const total = lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
 
   await db.execute(
-    `INSERT INTO sales (id, shop_id, user_id, customer_name, total, created_at, updated_at, dirty)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 1)`,
-    [id, shopId, userId, customerName || null, total, now, now]
+    `INSERT INTO sales (id, shop_id, user_id, customer_id, customer_name, total, created_at, updated_at, dirty)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)`,
+    [id, shopId, userId, customerId, customerName || null, total, now, now]
   );
 
   const items: SaleItem[] = [];
@@ -62,7 +63,56 @@ export async function createSale(shopId: string, userId: string | null, customer
     items.push({ id: itemId, saleId: id, partId: line.partId, partName: line.partName, partNumber: line.partNumber, qty: line.qty, unitPrice: line.unitPrice });
   }
 
-  return mapSale({ id, shop_id: shopId, user_id: userId, customer_name: customerName, total, created_at: now }, items);
+  return mapSale({ id, shop_id: shopId, user_id: userId, customer_id: customerId, customer_name: customerName, total, created_at: now }, items);
+}
+
+/**
+ * Builds the one receipt for a billed repair job: a sale row plus a line
+ * per part already on the job (no stock decrement — the job already took
+ * it out of inventory when each part was added) and, if there's a labor
+ * fee, one synthetic line with no `partId` behind it. Used by
+ * `billAndCompleteJob` in `repairJobs.ts` — kept here since this file
+ * already owns writes to `sales`/`sale_items`.
+ */
+export async function createBilledSale(
+  shopId: string,
+  userId: string | null,
+  customerId: string | null,
+  customerName: string | null,
+  lines: CartLine[],
+  laborFee: number
+): Promise<Sale> {
+  const db = await getDb();
+  const id = newId();
+  const now = nowIso();
+  const partsSubtotal = lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
+  const total = partsSubtotal + laborFee;
+
+  await db.execute(
+    `INSERT INTO sales (id, shop_id, user_id, customer_id, customer_name, total, created_at, updated_at, dirty)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)`,
+    [id, shopId, userId, customerId, customerName || null, total, now, now]
+  );
+
+  const items: SaleItem[] = [];
+  for (const line of lines) {
+    const itemId = newId();
+    await db.execute(
+      `INSERT INTO sale_items (id, sale_id, part_id, part_name, part_number, qty, unit_price) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [itemId, id, line.partId, line.partName, line.partNumber, line.qty, line.unitPrice]
+    );
+    items.push({ id: itemId, saleId: id, partId: line.partId, partName: line.partName, partNumber: line.partNumber, qty: line.qty, unitPrice: line.unitPrice });
+  }
+  if (laborFee > 0) {
+    const itemId = newId();
+    await db.execute(
+      `INSERT INTO sale_items (id, sale_id, part_id, part_name, part_number, qty, unit_price) VALUES ($1, $2, NULL, $3, $4, $5, $6)`,
+      [itemId, id, "Labor", "", 1, laborFee]
+    );
+    items.push({ id: itemId, saleId: id, partId: null, partName: "Labor", partNumber: "", qty: 1, unitPrice: laborFee });
+  }
+
+  return mapSale({ id, shop_id: shopId, user_id: userId, customer_id: customerId, customer_name: customerName, total, created_at: now }, items);
 }
 
 export async function listSales(shopId: string): Promise<Sale[]> {

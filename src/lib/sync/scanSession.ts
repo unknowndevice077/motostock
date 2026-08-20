@@ -29,9 +29,9 @@ function mapSession(row: Record<string, unknown>): PhoneSession {
  * supabase/migrations/0004_phone_scan.sql). Existing sessions aren't
  * affected — a shop can have more than one phone paired at once.
  */
-export async function createPairingSession(shopId: string, createdBy: string | null): Promise<{ url: string } | null> {
+export async function createPairingSession(shopId: string, createdBy: string | null): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) return { ok: false, error: "No cloud project configured." };
 
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
@@ -39,11 +39,11 @@ export async function createPairingSession(shopId: string, createdBy: string | n
     .insert({ shop_id: shopId, created_by: createdBy, expires_at: expiresAt })
     .select("id")
     .single();
-  if (error || !data) return null;
+  if (error || !data) return { ok: false, error: error?.message ?? "Couldn't create a pairing code." };
 
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base) return null;
-  return { url: `${base}/functions/v1/scan-relay?token=${data.id}` };
+  if (!base) return { ok: false, error: "Cloud project URL isn't configured." };
+  return { ok: true, url: `${base}/functions/v1/scan-relay?token=${data.id}` };
 }
 
 /** Sessions not yet expired or revoked, most recently active first. */

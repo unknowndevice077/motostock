@@ -11,6 +11,7 @@ import type { AppUser, Role } from "@/types";
 import { roleLabel } from "@/lib/format";
 import { resizeToFitDataUrl } from "@/lib/image";
 import { getCached, setCached } from "@/lib/db/cache";
+import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -62,6 +63,10 @@ export default function AdminPage() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shop) return;
+    if (form.password.length < MIN_PASSWORD_LENGTH) {
+      push("error", `Password must be at least ${MIN_PASSWORD_LENGTH} characters, so this account can also connect to the cloud.`);
+      return;
+    }
     const staff = await createUser(shop.id, form.name, form.email, form.password, form.role);
     setForm({ name: "", email: "", password: "", role: "user" });
     setShowAdd(false);

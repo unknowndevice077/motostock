@@ -1,17 +1,19 @@
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth/session";
 import { useToast } from "@/components/ui/Toast";
-import { getRepairJob, addPartToJob, setJobStatus, updateJobDetails } from "@/lib/db/repairJobs";
+import { useScan } from "@/lib/sync/ScanProvider";
+import { getRepairJob, addPartToJob, setJobStatus, updateJobDetails, billAndCompleteJob } from "@/lib/db/repairJobs";
 import { listParts } from "@/lib/db/parts";
 import type { Part, RepairJob, RepairJobStatus } from "@/types";
 import { formatCurrency } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/FormField";
 import { HelpTip } from "@/components/ui/HelpTip";
-import { IconPrinter, IconPlus } from "@/components/ui/icons";
+import { IconPrinter, IconPlus, IconArrowLeft, IconReceipt } from "@/components/ui/icons";
 
 const STATUS_FLOW: RepairJobStatus[] = ["open", "in_progress", "completed"];
 const statusLabel: Record<RepairJobStatus, string> = { open: "Open", in_progress: "In Progress", completed: "Completed" };
@@ -26,6 +28,8 @@ function RepairDetailContent() {
   const [parts, setParts] = useState<Part[]>([]);
   const [partQuery, setPartQuery] = useState("");
   const [laborFeeInput, setLaborFeeInput] = useState("0");
+  const [billing, setBilling] = useState(false);
+  const router = useRouter();
 
   const reload = async () => {
     if (!jobId) return;
@@ -43,6 +47,22 @@ function RepairDetailContent() {
     if (!shop) return;
     listParts(shop.id).then(setParts);
   }, [shop]);
+
+  // Phone-scanner integration: staff pick this job on the phone itself
+  // before scanning (see supabase/functions/scan-relay), so only react to
+  // scans explicitly tagged to this exact job — a general/untargeted scan
+  // is left for the toast-only "live lookup" path instead.
+  const { onScan } = useScan();
+  useEffect(() => {
+    if (!job) return;
+    return onScan((event) => {
+      if (event.repairJobId !== job.id) return;
+      const part = parts.find((p) => p.partNumber === event.partNumber);
+      if (!part) return;
+      addPartToJob(job.id, part.id, part.partName, part.partNumber, 1, part.sellingPrice).then(reload);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onScan, job?.id, parts]);
 
   const matches = useMemo(() => {
     const q = partQuery.trim().toLowerCase();
@@ -76,6 +96,21 @@ function RepairDetailContent() {
     reload();
   };
 
+  const handleBillAndComplete = async () => {
+    if (!shop) return;
+    setBilling(true);
+    try {
+      const sale = await billAndCompleteJob(shop.id, currentUser?.id ?? null, job.id);
+      track("repair_job_billed", { total: sale.total, itemCount: sale.items.length });
+      push("success", `Billed — ${formatCurrency(sale.total)}`);
+      router.push(`/pos/receipt?saleId=${sale.id}`);
+    } catch (err) {
+      push("error", err instanceof Error ? err.message : "Couldn't bill this job.");
+    } finally {
+      setBilling(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <HelpTip id="repairs-detail">
@@ -84,15 +119,39 @@ function RepairDetailContent() {
         invoice.
       </HelpTip>
 
-      <div className="print:hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-white">{job.customerName}&apos;s Repair Job</h2>
-          <p className="text-xs text-slate-400 font-mono">{job.motorcycleDesc || "No motorcycle details"} {job.customerPhone && `· ${job.customerPhone}`}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => window.print()}>
-            <IconPrinter width={14} height={14} /> Print Invoice
-          </Button>
+      <div className="print:hidden">
+        <Link href="/repairs" className="inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-500 hover:text-slate-300 transition-colors duration-150 mb-3">
+          <IconArrowLeft width={12} height={12} /> Back to Repair Jobs
+        </Link>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-white">{job.customerName}&apos;s Repair Job</h2>
+            <p className="text-xs text-slate-400 font-mono">
+              {job.motorcycleDesc || "No motorcycle details"} {job.customerPhone && `· ${job.customerPhone}`}
+              {job.customerId && (
+                <>
+                  {" · "}
+                  <Link href={`/customers/detail?customerId=${job.customerId}`} className="text-blue-400 hover:text-blue-300">
+                    View customer history →
+                  </Link>
+                </>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {job.saleId ? (
+              <Button variant="secondary" onClick={() => router.push(`/pos/receipt?saleId=${job.saleId}`)}>
+                <IconReceipt width={14} height={14} /> View Receipt
+              </Button>
+            ) : (
+              <Button loading={billing} onClick={handleBillAndComplete}>
+                <IconReceipt width={14} height={14} /> Bill & Complete
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => window.print()}>
+              <IconPrinter width={14} height={14} /> Print Invoice
+            </Button>
+          </div>
         </div>
       </div>
 

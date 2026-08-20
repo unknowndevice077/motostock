@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { IconEye, IconEyeOff } from "@/components/ui/icons";
 
 const baseInputClass = "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500 transition-all duration-200 placeholder-slate-600";
 
@@ -18,18 +19,33 @@ interface TextFieldProps extends BaseProps {
 }
 
 export function TextField({ label, required, type = "text", value, onChange, placeholder, step }: TextFieldProps) {
+  const [reveal, setReveal] = useState(false);
+  const isPassword = type === "password";
   return (
     <div>
       <label className="block text-[10px] font-mono uppercase text-slate-400 mb-1">{label}</label>
-      <input
-        type={type}
-        step={step}
-        required={required}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={baseInputClass}
-      />
+      <div className="relative">
+        <input
+          type={isPassword && reveal ? "text" : type}
+          step={step}
+          required={required}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className={isPassword ? `${baseInputClass} pr-9` : baseInputClass}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setReveal((r) => !r)}
+            tabIndex={-1}
+            title={reveal ? "Hide password" : "Show password"}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors duration-150"
+          >
+            {reveal ? <IconEyeOff width={14} height={14} /> : <IconEye width={14} height={14} />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,24 +1,29 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth/session";
 import { listParts } from "@/lib/db/parts";
-import { listMotorcycles } from "@/lib/db/motorcycles";
+import { listRepairJobs } from "@/lib/db/repairJobs";
+import { getTodayActivity, getRecentTransactions, type DayActivity, type MonthTransaction } from "@/lib/db/reports";
 import { getCached, setCached } from "@/lib/db/cache";
+import { computeStockMetrics } from "@/lib/stockMetrics";
 import { StatTile } from "@/components/ui/StatTile";
 import { TableSkeleton } from "@/components/ui/Skeleton";
-import { CategoryValueChart } from "@/components/dashboard/CategoryValueChart";
 import { HelpTip } from "@/components/ui/HelpTip";
 import { PART_CATEGORIES } from "@/lib/constants";
+import { formatCurrency } from "@/lib/format";
 import { IconAlert } from "@/components/ui/icons";
-import type { Motorcycle, Part } from "@/types";
+import type { Part, RepairJob } from "@/types";
 
 export default function DashboardPage() {
-  const { shop, currentUser } = useAuth();
-  const isAdmin = currentUser?.role === "admin";
+  const { shop } = useAuth();
   const [parts, setParts] = useState<Part[]>(() => (shop && getCached<Part[]>(`parts:${shop.id}`)) || []);
-  const [motorcycles, setMotorcycles] = useState<Motorcycle[]>(() => (shop && getCached<Motorcycle[]>(`motorcycles:${shop.id}`)) || []);
+  const [repairJobs, setRepairJobs] = useState<RepairJob[]>(() => (shop && getCached<RepairJob[]>(`repair_jobs:${shop.id}`)) || []);
   const [loading, setLoading] = useState(() => !(shop && getCached(`parts:${shop.id}`)));
+  const [today, setToday] = useState<DayActivity>({ total: 0, transactionCount: 0 });
+  const [recent, setRecent] = useState<MonthTransaction[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
   const [watchlistSearch, setWatchlistSearch] = useState("");
   const [watchlistCategory, setWatchlistCategory] = useState("");
 
@@ -26,36 +31,27 @@ export default function DashboardPage() {
     if (!shop) return;
     // Cached data (if any) is already showing — this refreshes it quietly
     // instead of blocking the page behind a skeleton on every revisit.
-    Promise.all([listParts(shop.id), listMotorcycles(shop.id)]).then(([p, m]) => {
+    Promise.all([listParts(shop.id), listRepairJobs(shop.id)]).then(([p, j]) => {
       setCached(`parts:${shop.id}`, p);
-      setCached(`motorcycles:${shop.id}`, m);
+      setCached(`repair_jobs:${shop.id}`, j);
       setParts(p);
-      setMotorcycles(m);
+      setRepairJobs(j);
       setLoading(false);
     });
   }, [shop]);
 
-  const metrics = useMemo(() => {
-    const partsCost = parts.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
-    const partsRetail = parts.reduce((sum, p) => sum + p.stock * p.sellingPrice, 0);
-    const bikesCost = motorcycles.reduce((sum, m) => sum + m.stock * m.cost, 0);
-    const bikesRetail = motorcycles.reduce((sum, m) => sum + m.stock * m.price, 0);
-    const totalCost = partsCost + bikesCost;
-    const totalRetail = partsRetail + bikesRetail;
-    const lowStock = parts.filter((p) => p.stock <= p.minThreshold);
+  useEffect(() => {
+    if (!shop) return;
+    setActivityLoading(true);
+    Promise.all([getTodayActivity(shop.id), getRecentTransactions(shop.id, 8)]).then(([t, r]) => {
+      setToday(t);
+      setRecent(r);
+      setActivityLoading(false);
+    });
+  }, [shop]);
 
-    const byCategory = new Map<string, number>();
-    for (const p of parts) byCategory.set(p.category, (byCategory.get(p.category) ?? 0) + p.stock * p.sellingPrice);
-    for (const m of motorcycles) byCategory.set(m.category, (byCategory.get(m.category) ?? 0) + m.stock * m.price);
-
-    return {
-      totalCost,
-      totalRetail,
-      potentialProfit: totalRetail - totalCost,
-      lowStock,
-      chartData: Array.from(byCategory.entries()).map(([label, value]) => ({ label, value })),
-    };
-  }, [parts, motorcycles]);
+  const metrics = useMemo(() => computeStockMetrics(parts, []), [parts]);
+  const openJobsCount = useMemo(() => repairJobs.filter((j) => j.status !== "completed").length, [repairJobs]);
 
   const filteredLowStock = useMemo(() => {
     const q = watchlistSearch.trim().toLowerCase();
@@ -69,32 +65,54 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 animate-slideUp">
       <HelpTip id="dashboard">
-        This is your shop&apos;s snapshot — total inventory value, potential profit if everything
-        sold at retail, and anything running low. Use <strong>Inventory</strong> to add stock,{" "}
-        <strong>POS</strong> to sell it, and <strong>Repairs</strong> to log jobs.
+        This is your shop&apos;s day-to-day snapshot — what&apos;s sold today, what&apos;s in
+        progress, and anything that needs attention. For inventory value and longer-term trends,
+        see <strong>Sales Reports</strong>.
       </HelpTip>
 
       <div>
-        <h2 className="text-xl font-bold tracking-tight text-white">Stock Asset Evaluation</h2>
-        <p className="text-xs text-slate-400">Live totals across parts and motorcycle inventory.</p>
+        <h2 className="text-xl font-bold tracking-tight text-white">Today</h2>
+        <p className="text-xs text-slate-400">Sales and repair jobs completed so far today.</p>
       </div>
 
-      {loading ? (
+      {activityLoading ? (
         <TableSkeleton rows={1} cols={4} />
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatTile label="Inventory Cost" value={metrics.totalCost} format="currency" accent="primary" />
-          <StatTile label="Potential Retail Value" value={metrics.totalRetail} format="currency" accent="primary" />
-          {isAdmin && <StatTile label="Potential Profit" value={metrics.potentialProfit} format="currency" accent="blue" />}
-          <StatTile label="Low Stock Parts" value={metrics.lowStock.length} accent="amber" suffix=" flagged" />
+          <StatTile label="Today's Revenue" value={today.total} format="currency" accent="primary" />
+          <StatTile label="Today's Transactions" value={today.transactionCount} accent="primary" />
+          <StatTile label="Out of Stock" value={metrics.outOfStock.length} accent={metrics.outOfStock.length > 0 ? "amber" : "primary"} />
+          <StatTile label="Open Repair Jobs" value={openJobsCount} accent="blue" />
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">Inventory Value by Category</h3>
-          <p className="text-[11px] text-slate-500 mb-1">Retail value across parts and motorcycle categories, largest first.</p>
-          {loading ? <TableSkeleton rows={4} cols={1} /> : <CategoryValueChart data={metrics.chartData} />}
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">Recent Activity</h3>
+          <p className="text-[11px] text-slate-500 mb-3">The latest sales and completed repair jobs, most recent first.</p>
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {activityLoading && <p className="text-[11px] text-slate-500 font-mono py-4 text-center">Loading...</p>}
+            {!activityLoading && recent.length === 0 && <p className="text-[11px] text-slate-600 font-mono py-4 text-center">Nothing yet — sell a part or complete a job to see it here.</p>}
+            {!activityLoading &&
+              recent.map((t) => (
+                <Link
+                  key={`${t.kind}-${t.id}`}
+                  href={t.kind === "sale" ? `/pos/receipt?saleId=${t.id}` : `/repairs/detail?jobId=${t.id}`}
+                  className="flex items-center justify-between bg-slate-950 border border-slate-800 hover:border-blue-700 rounded-lg px-3 py-2 transition-colors duration-150"
+                >
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className={`text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${t.kind === "sale" ? "bg-blue-950 text-blue-400 border border-blue-800/50" : "bg-emerald-950/40 text-emerald-400 border border-emerald-900/40"}`}>
+                      {t.kind === "sale" ? "Sale" : "Repair"}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-slate-200 truncate">{t.customerName || "Walk-in customer"}</p>
+                      <p className="text-[9px] text-slate-500 font-mono">{new Date(t.date).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-slate-300 shrink-0 ml-2">{formatCurrency(t.total)}</span>
+                </Link>
+              ))}
+          </div>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">

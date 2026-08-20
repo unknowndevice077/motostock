@@ -5,13 +5,16 @@
 //        function at all, so one more small script is a non-issue). The
 //        page reads its own `?token=` from the URL, so this same HTML is
 //        returned for every request; the token is only ever validated
-//        against phone_sessions, never trusted as-is.
+//        against phone_sessions, never trusted as-is. Also embeds the
+//        shop's open repair jobs, so staff can pick which job they're
+//        scanning for right on the phone before scanning anything.
 // POST — the page's own camera loop posts each decoded part-number code
-//        here as { token, code }. Validated against phone_sessions with the
-//        service role (the phone has no Supabase session of its own — see
-//        supabase/migrations/0004_phone_scan.sql for why), then looks the
-//        part up and records a scan_events row the paired laptop is
-//        subscribed to via Realtime.
+//        here as { token, code, job_id }. Validated against phone_sessions
+//        with the service role (the phone has no Supabase session of its
+//        own — see supabase/migrations/0004_phone_scan.sql for why), then
+//        looks the part up and records a scan_events row (tagged with
+//        job_id if one was picked) the paired laptop is subscribed to via
+//        Realtime.
 //
 // Deploy: npx supabase functions deploy scan-relay --no-verify-jwt
 // (this function MUST run with verify_jwt disabled — the phone has no
@@ -26,11 +29,21 @@ Deno.serve(async (req: Request) => {
   if (req.method === "GET") {
     const token = url.searchParams.get("token") ?? "";
     const session = await validSession(admin, token);
-    return html(session ? scannerPage(token) : expiredPage());
+    if (!session) return html(expiredPage());
+
+    const { data: jobs } = await admin
+      .from("repair_jobs")
+      .select("id, customer_name")
+      .eq("shop_id", session.shop_id)
+      .in("status", ["open", "in_progress"])
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    return html(scannerPage(token, jobs ?? []));
   }
 
   if (req.method === "POST") {
-    let body: { token?: string; code?: string };
+    let body: { token?: string; code?: string; job_id?: string };
     try {
       body = await req.json();
     } catch {
@@ -42,6 +55,24 @@ Deno.serve(async (req: Request) => {
 
     const session = await validSession(admin, token);
     if (!session) return json({ ok: false, error: "This code has expired — ask staff to open Phone Scanner again." }, 401);
+
+    // Trust job_id only after confirming it's actually a job in this same
+    // shop — the phone's own <select> is only ever populated from this
+    // shop's jobs, but the request body is still just client input.
+    let jobId: string | null = null;
+    let jobLabel: string | null = null;
+    if (body.job_id) {
+      const { data: job } = await admin
+        .from("repair_jobs")
+        .select("id, customer_name")
+        .eq("id", body.job_id)
+        .eq("shop_id", session.shop_id)
+        .maybeSingle();
+      if (job) {
+        jobId = job.id;
+        jobLabel = job.customer_name;
+      }
+    }
 
     const { data: part, error: partError } = await admin
       .from("parts")
@@ -61,10 +92,11 @@ Deno.serve(async (req: Request) => {
       part_name: part.part_name,
       part_number: part.part_number,
       stock: part.stock,
+      repair_job_id: jobId,
     });
     await admin.from("phone_sessions").update({ last_seen_at: new Date().toISOString() }).eq("id", session.id);
 
-    return json({ ok: true, part: { name: part.part_name, stock: part.stock, price: part.selling_price } }, 200);
+    return json({ ok: true, part: { name: part.part_name, stock: part.stock, price: part.selling_price }, jobLabel }, 200);
   }
 
   return json({ error: "Method not allowed." }, 405);
@@ -91,6 +123,11 @@ function html(body: string): Response {
   return new Response(body, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
+/** Escapes text for safe use inside an HTML attribute/text node (job customer names are user data). */
+function escapeAttr(s: string): string {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function expiredPage(): string {
   return `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -100,7 +137,7 @@ function expiredPage(): string {
 <body><div class="card"><h1>This code has expired</h1><p>Ask staff to open Phone Scanner on the laptop again for a fresh QR code.</p></div></body></html>`;
 }
 
-function scannerPage(token: string): string {
+function scannerPage(token: string, jobs: { id: string; customer_name: string }[]): string {
   return `<!doctype html>
 <html>
 <head>
@@ -112,6 +149,9 @@ function scannerPage(token: string): string {
   header { padding:14px 16px; border-bottom:1px solid #1e293b; }
   header h1 { font-size:.95rem; margin:0; font-weight:700; }
   header p { font-size:.75rem; color:#64748b; margin:2px 0 0; }
+  .job-picker { padding:10px 16px; border-bottom:1px solid #1e293b; background:#0f172a; }
+  .job-picker label { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.03em; color:#64748b; margin-bottom:4px; }
+  .job-picker select { width:100%; background:#020617; color:#e2e8f0; border:1px solid #1e293b; border-radius:8px; padding:8px 10px; font-size:.85rem; }
   .stage { position:relative; flex:1; background:#000; overflow:hidden; }
   video { width:100%; height:100%; object-fit:cover; }
   .frame { position:absolute; inset:12%; border:2px solid rgba(96,165,250,.65); border-radius:16px; pointer-events:none; }
@@ -129,6 +169,13 @@ function scannerPage(token: string): string {
   <h1>MotoStock &mdash; Phone Scanner</h1>
   <p>Point the camera at a part's QR label. Scans appear on the laptop instantly.</p>
 </header>
+<div class="job-picker">
+  <label for="job">Scanning for</label>
+  <select id="job">
+    <option value="">General inventory (no specific job)</option>
+    ${jobs.map((j) => `<option value="${escapeAttr(j.id)}">${escapeAttr(j.customer_name)}'s job</option>`).join("\n    ")}
+  </select>
+</div>
 <div class="stage">
   <video id="video" playsinline autoplay muted></video>
   <div class="frame"></div>
@@ -145,6 +192,7 @@ function scannerPage(token: string): string {
   var ctx = canvas.getContext("2d", { willReadFrequently: true });
   var statusEl = document.getElementById("status");
   var flashEl = document.getElementById("flash");
+  var jobSelect = document.getElementById("job");
   var lastCode = null;
   var lastAt = 0;
   var COOLDOWN_MS = 1500;
@@ -161,11 +209,14 @@ function scannerPage(token: string): string {
       var res = await fetch(location.pathname + location.search, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: TOKEN, code: code }),
+        body: JSON.stringify({ token: TOKEN, code: code, job_id: jobSelect.value || null }),
       });
       var data = await res.json();
       if (data.ok) {
-        flash('<div class="ok">✓ ' + escapeHtml(data.part.name) + '</div><div class="meta">' + data.part.stock + ' left · ₱' + Number(data.part.price).toLocaleString() + '</div>');
+        var meta = data.jobLabel
+          ? "Added to " + escapeHtml(data.jobLabel) + "'s job"
+          : data.part.stock + ' left · ₱' + Number(data.part.price).toLocaleString();
+        flash('<div class="ok">✓ ' + escapeHtml(data.part.name) + '</div><div class="meta">' + meta + '</div>');
       } else {
         flash('<div class="err">' + escapeHtml(data.error || "Scan failed") + '</div>');
       }

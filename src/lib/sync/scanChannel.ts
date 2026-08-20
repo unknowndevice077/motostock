@@ -6,6 +6,8 @@ export interface ScanEvent {
   partName: string;
   partNumber: string;
   stock: number;
+  /** Set when the phone had a specific repair job picked before scanning — null means "general inventory". */
+  repairJobId: string | null;
   createdAt: string;
 }
 
@@ -16,6 +18,7 @@ function mapEvent(row: Record<string, unknown>): ScanEvent {
     partName: row.part_name as string,
     partNumber: row.part_number as string,
     stock: row.stock as number,
+    repairJobId: (row.repair_job_id as string | null) ?? null,
     createdAt: row.created_at as string,
   };
 }

@@ -90,10 +90,45 @@ export function IconPrinter(props: IconProps) {
   );
 }
 
+export function IconEye(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function IconEyeOff(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M17.94 17.94A10.9 10.9 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 4.22-5.22M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      <path d="M1 1l22 22" />
+    </svg>
+  );
+}
+
+export function IconArrowLeft(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M19 12H5" />
+      <path d="M11 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return (
     <svg {...base} {...props}>
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function IconMinus(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 12h14" />
     </svg>
   );
 }
@@ -192,6 +227,15 @@ export function IconChart(props: IconProps) {
     <svg {...base} {...props}>
       <path d="M4 20V10M11 20V4M18 20v-7" />
       <path d="M4 20h16" />
+    </svg>
+  );
+}
+
+export function IconReceipt(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6 3h12v18l-2.5-1.5L13 21l-2.5-1.5L8 21l-2-1.5V3Z" />
+      <path d="M9 8h6M9 12h6" />
     </svg>
   );
 }

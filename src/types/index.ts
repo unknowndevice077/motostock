@@ -52,10 +52,19 @@ export interface Motorcycle {
   updatedAt: string;
 }
 
+export interface Customer {
+  id: string;
+  shopId: string;
+  name: string;
+  phone: string | null;
+  createdAt: string;
+}
+
 export interface SaleItem {
   id: string;
   saleId: string;
-  partId: string;
+  /** Null for a synthetic non-part line (e.g. a repair job's labor fee). */
+  partId: string | null;
   partName: string;
   partNumber: string;
   qty: number;
@@ -66,6 +75,7 @@ export interface Sale {
   id: string;
   shopId: string;
   userId: string | null;
+  customerId: string | null;
   customerName: string | null;
   total: number;
   createdAt: string;
@@ -88,6 +98,7 @@ export interface RepairJob {
   id: string;
   shopId: string;
   userId: string | null;
+  customerId: string | null;
   customerName: string;
   customerPhone: string | null;
   motorcycleDesc: string | null;
@@ -97,6 +108,8 @@ export interface RepairJob {
   total: number;
   createdAt: string;
   completedAt: string | null;
+  /** Set once the job has been billed via "Bill & Complete" — the receipt to view/print. */
+  saleId: string | null;
   parts: RepairJobPart[];
 }
 

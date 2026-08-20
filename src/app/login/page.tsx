@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/session";
 import { Button } from "@/components/ui/Button";
+import { IconEye, IconEyeOff } from "@/components/ui/icons";
+import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 
 // Local-device only convenience for a shared shop terminal — never synced or
 // sent anywhere. Storing a plaintext password is a deliberate tradeoff for
@@ -63,6 +65,10 @@ export default function LoginPage() {
     setError("");
     if (!shopName || !adminName || !email || !password) {
       setError("All fields are required to set up your shop.");
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters — needed so this account can also connect to the cloud later.`);
       return;
     }
     setBusy(true);
@@ -163,17 +169,32 @@ export default function LoginPage() {
 }
 
 function Field({ label, value, onChange, placeholder, type = "text" }: { label: string; value: string; onChange: (v: string) => void; placeholder: string; type?: string }) {
+  const [reveal, setReveal] = useState(false);
+  const isPassword = type === "password";
   return (
     <div>
       <label className="block text-xs font-medium text-slate-400 mb-1.5">{label}</label>
-      <input
-        type={type}
-        required
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors duration-150"
-      />
+      <div className="relative">
+        <input
+          type={isPassword && reveal ? "text" : type}
+          required
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors duration-150 ${isPassword ? "pr-10" : ""}`}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setReveal((r) => !r)}
+            tabIndex={-1}
+            title={reveal ? "Hide password" : "Show password"}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors duration-150"
+          >
+            {reveal ? <IconEyeOff width={15} height={15} /> : <IconEye width={15} height={15} />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -98,11 +98,31 @@ export async function joinExistingShop(email: string, password: string): Promise
   };
 }
 
+/**
+ * True only when there's both a valid session AND that account actually has
+ * a shop membership row in the cloud — not just a session token. A session
+ * alone isn't enough: if a prior provisioning attempt got as far as signing
+ * up/in but failed before creating the shops/app_users rows (e.g. hit an
+ * RLS bug, lost connection mid-way), the session persists on its own and
+ * would otherwise make every screen believe the shop is connected forever,
+ * silently failing every cloud write with no way back to the "Connect to
+ * Cloud" screen that would actually fix it. The app_users SELECT policy
+ * explicitly allows a signed-in user to see their own row regardless of
+ * shop resolution (see supabase/migrations/0005_fix_bootstrap_rls.sql), so
+ * this check works even for an account that never finished provisioning.
+ */
 export async function isCloudConnected(): Promise<boolean> {
   const supabase = getSupabase();
   if (!supabase) return false;
   const { data } = await supabase.auth.getSession();
-  return Boolean(data.session);
+  if (!data.session) return false;
+
+  const { data: membership } = await supabase
+    .from("app_users")
+    .select("id")
+    .eq("auth_user_id", data.session.user.id)
+    .maybeSingle();
+  return Boolean(membership);
 }
 
 /**

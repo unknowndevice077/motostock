@@ -5,7 +5,12 @@ import { useAuth } from "@/lib/auth/session";
 import { useToast } from "@/components/ui/Toast";
 import { roleLabel } from "@/lib/format";
 import { resizeToSquareDataUrl } from "@/lib/image";
+import { verifyLogin, updatePassword } from "@/lib/db/users";
+import { isCloudConnected } from "@/lib/sync/cloudAuth";
+import { getSupabase } from "@/lib/supabase/client";
+import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 import { Button } from "@/components/ui/Button";
+import { TextField } from "@/components/ui/FormField";
 import { HelpTip } from "@/components/ui/HelpTip";
 import { IconUpload, IconTrash } from "@/components/ui/icons";
 
@@ -15,7 +20,43 @@ export default function AccountPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+
   if (!currentUser) return null;
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword || !newPassword) return;
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      push("error", `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const verified = await verifyLogin(currentUser.email, currentPassword);
+      if (!verified) {
+        push("error", "Current password doesn't match.");
+        return;
+      }
+      await updatePassword(currentUser.id, newPassword);
+
+      // Best-effort: keep the cloud login in sync too, if this device
+      // already has an active cloud session. Never blocks the local
+      // change, which is what actually matters for signing in here.
+      if (await isCloudConnected()) {
+        const supabase = getSupabase();
+        await supabase?.auth.updateUser({ password: newPassword }).catch(() => null);
+      }
+
+      push("success", "Password changed.");
+      setCurrentPassword("");
+      setNewPassword("");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,6 +128,23 @@ export default function AccountPage() {
           <Field label="Email" value={currentUser.email} />
           <Field label="Role" value={roleLabel(currentUser.role)} />
         </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+        <div>
+          <h3 className="text-sm font-bold text-white">Change Password</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Needs to be at least {MIN_PASSWORD_LENGTH} characters — that&apos;s also the minimum for
+            connecting to the cloud, so a short local password can never end up unable to sync later.
+          </p>
+        </div>
+        <form onSubmit={handleChangePassword} className="space-y-3 max-w-xs">
+          <TextField label="Current Password" type="password" required value={currentPassword} onChange={setCurrentPassword} />
+          <TextField label="New Password" type="password" required value={newPassword} onChange={setNewPassword} />
+          <Button type="submit" variant="secondary" loading={changingPassword} disabled={!currentPassword || !newPassword}>
+            Update Password
+          </Button>
+        </form>
       </div>
     </div>
   );
