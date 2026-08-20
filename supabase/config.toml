@@ -1,0 +1,8 @@
+# Only scan-relay needs its own entry: it's the one Edge Function a client
+# with no Supabase session (a paired phone's browser) must be able to call.
+# Every other function (e.g. create-staff-account) stays on the platform
+# default, which requires a real Supabase JWT/apikey and is checked manually
+# inside those functions anyway.
+
+[functions.scan-relay]
+verify_jwt = false

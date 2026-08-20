@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/session";
 import { useSync } from "@/lib/sync/SyncProvider";
 import { roleLabel } from "@/lib/format";
-import { IconDashboard, IconBox, IconCart, IconWrench, IconTag, IconShield, IconLogout, IconChart, IconHistory } from "@/components/ui/icons";
+import { IconDashboard, IconBox, IconCart, IconWrench, IconTag, IconShield, IconLogout, IconChart, IconHistory, IconPhoneScan } from "@/components/ui/icons";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: IconDashboard, adminOnly: false },
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/history", label: "Purchase History", icon: IconHistory, adminOnly: false },
   { href: "/repairs", label: "Repair Jobs", icon: IconWrench, adminOnly: false },
   { href: "/labels", label: "QR Labels", icon: IconTag, adminOnly: false },
+  { href: "/scanner", label: "Phone Scanner", icon: IconPhoneScan, adminOnly: false },
   { href: "/reports", label: "Sales Reports", icon: IconChart, adminOnly: true },
   { href: "/admin", label: "Shop Settings", icon: IconShield, adminOnly: true },
 ] as const;

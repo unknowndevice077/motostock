@@ -1,0 +1,44 @@
+name: release
+
+# Push a tag like v3.2.0 to build a new Windows installer, sign it, and
+# publish it as a DRAFT GitHub Release. Nothing reaches installed copies of
+# the app until that draft is manually published — every running app's
+# updater points at "the latest published release," and GitHub excludes
+# drafts from that. Publish only after downloading and sanity-checking the
+# installer yourself.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "MotoStock ${{ github.ref_name }}"
+          releaseBody: "See assets below to download and install. Existing installs will pick this up automatically once published."
+          releaseDraft: true
+          prerelease: false

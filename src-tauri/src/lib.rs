@@ -29,12 +29,20 @@ pub fn run() {
     },
   ];
 
-  tauri::Builder::default()
-    .plugin(
-      tauri_plugin_sql::Builder::default()
-        .add_migrations("sqlite:motostock.db", migrations)
-        .build(),
-    )
+  let builder = tauri::Builder::default().plugin(
+    tauri_plugin_sql::Builder::default()
+      .add_migrations("sqlite:motostock.db", migrations)
+      .build(),
+  );
+
+  // Updater/process aren't supported on mobile targets — desktop-only, same
+  // as every shop actually running this app.
+  #[cfg(desktop)]
+  let builder = builder
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_process::init());
+
+  builder
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

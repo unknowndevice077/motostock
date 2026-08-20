@@ -154,6 +154,29 @@ export function IconUser(props: IconProps) {
   );
 }
 
+export function IconPhoneScan(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="M11 18h2" />
+      <path d="M4 8V6a2 2 0 0 1 2-2" />
+      <path d="M20 8V6a2 2 0 0 0-2-2" />
+      <path d="M4 14v2a2 2 0 0 0 2 2" />
+      <path d="M20 14v2a2 2 0 0 1-2 2" />
+    </svg>
+  );
+}
+
+export function IconDownload(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3v12" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M4 20h16" />
+    </svg>
+  );
+}
+
 export function IconHistory(props: IconProps) {
   return (
     <svg {...base} {...props}>

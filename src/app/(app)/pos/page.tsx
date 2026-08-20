@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/session";
 import { useToast } from "@/components/ui/Toast";
+import { useScan } from "@/lib/sync/ScanProvider";
 import { listParts } from "@/lib/db/parts";
 import { createSale, type CartLine } from "@/lib/db/sales";
 import { listRepairJobs, addPartToJob } from "@/lib/db/repairJobs";
@@ -99,6 +100,19 @@ export default function PosPage() {
   };
 
   const removeLine = (partId: string) => setCart((prev) => prev.filter((l) => l.partId !== partId));
+
+  // Phone-scanner integration: while a sale/job cart is actually open here,
+  // every live scan (see ScanProvider) drops straight into it, same as
+  // clicking the matching search result. Repair mode without a job selected
+  // is left alone, matching the disabled search/add-to-cart state above.
+  const { onScan } = useScan();
+  useEffect(() => {
+    return onScan((event) => {
+      if (mode === "repair" && !selectedJobId) return;
+      const part = parts.find((p) => p.partNumber === event.partNumber);
+      if (part) addToCart(part);
+    });
+  }, [onScan, mode, selectedJobId, parts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCheckout = async () => {
     if (!shop || cart.length === 0) return;

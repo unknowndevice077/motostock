@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth/session";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { listParts } from "@/lib/db/parts";
 import { SyncProvider } from "@/lib/sync/SyncProvider";
+import { ScanProvider } from "@/lib/sync/ScanProvider";
+import { UpdateChecker } from "@/components/layout/UpdateChecker";
 
 const STALL_TIMEOUT_MS = 8000;
 
@@ -79,12 +81,15 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
 
   return (
     <SyncProvider>
-      <div className="flex min-h-screen bg-slate-950 text-slate-100 antialiased font-sans print:bg-white print:block">
-        <Sidebar lowStockCount={lowStockCount} />
-        <div className="flex-1 flex flex-col min-w-0">
-          <main className="flex-1 p-6 overflow-y-auto space-y-6 animate-fadeIn print:p-0">{children}</main>
+      <ScanProvider>
+        <UpdateChecker />
+        <div className="flex min-h-screen bg-slate-950 text-slate-100 antialiased font-sans print:bg-white print:block">
+          <Sidebar lowStockCount={lowStockCount} />
+          <div className="flex-1 flex flex-col min-w-0">
+            <main className="flex-1 p-6 overflow-y-auto space-y-6 animate-fadeIn print:p-0">{children}</main>
+          </div>
         </div>
-      </div>
+      </ScanProvider>
     </SyncProvider>
   );
 }
