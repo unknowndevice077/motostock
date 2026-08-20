@@ -29,11 +29,24 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # GitHub's secret box (or a copy-paste) can silently add a trailing
+      # newline to a pasted value — rsign's base64 decoder is strict and
+      # rejects that with a cryptic "Invalid symbol 10" error. Stripping any
+      # stray whitespace/newlines here means a slightly-off paste of the
+      # signing secrets can never break the release build again.
+      - name: Normalize signing secrets
+        shell: bash
+        run: |
+          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" | tr -d '\r\n' > key.b64
+          echo "TAURI_SIGNING_PRIVATE_KEY=$(cat key.b64)" >> "$GITHUB_ENV"
+          rm key.b64
+          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" | tr -d '\r\n' > pass.txt
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$(cat pass.txt)" >> "$GITHUB_ENV"
+          rm pass.txt
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
         with:
