@@ -6,7 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run version:check && npm run migrations:check",
+    "version:check": "node scripts/version.mjs check",
+    "version:bump": "node scripts/version.mjs bump",
+    "migrations:check": "node scripts/check-migrations.mjs",
+    "migrations:lock": "node scripts/check-migrations.mjs --update",
     "tauri": "tauri"
   },
   "dependencies": {

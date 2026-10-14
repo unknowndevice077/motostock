@@ -23,11 +23,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: Install frontend dependencies
         run: npm ci
+
+      # Refuse to build if the tag doesn't match the app version (the updater
+      # would offer the wrong version forever) or a shipped migration was
+      # edited (every existing install would fail to open its database).
+      - name: Pre-release guards
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            npm run version:check -- "${{ github.ref_name }}"
+          else
+            npm run version:check
+          fi
+          npm run migrations:check
+          npm run typecheck
 
       # GitHub's secret box (or a copy-paste) can silently add a trailing
       # newline to a pasted value — rsign's base64 decoder is strict and

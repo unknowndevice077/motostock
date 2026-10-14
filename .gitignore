@@ -25,3 +25,6 @@ yarn-error.log*
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+
+# Supabase CLI local cache (linked project ref, pooler URL)
+/supabase/.temp/

@@ -1,0 +1,61 @@
+name: ci
+
+# Runs on every push to main and every PR, so a broken build or an edited
+# migration is caught here instead of in a tagged release (or worse, in a
+# shop's installed copy after the updater pulls it).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Versions in sync
+        run: npm run version:check
+
+      - name: Shipped migrations unchanged and registered
+        run: npm run migrations:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Static export build
+        run: npm run build
+
+  tauri:
+    # Same OS as the release build, so anything Windows-specific fails here first.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # generate_context!() needs frontendDist to exist; an empty dir is
+      # enough for cargo check (the real build happens in release.yml).
+      - name: Stub frontend output
+        shell: bash
+        run: mkdir -p out
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --locked
