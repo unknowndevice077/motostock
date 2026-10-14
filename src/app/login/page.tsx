@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/Button";
 import { IconEye, IconEyeOff } from "@/components/ui/icons";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 
-// Local-device only convenience for a shared shop terminal — never synced or
-// sent anywhere. Storing a plaintext password is a deliberate tradeoff for
-// "don't make staff retype it after every lock"; anyone with access to this
-// device already has access to the app, so it isn't raising the real risk.
-const REMEMBER_KEY = "motostock_remembered_login";
+// Local-device convenience for a shared shop terminal: remembers the email
+// only. The password is never stored -- it's the same credential used for
+// cloud sign-in, so keeping it in plaintext localStorage would leak it to
+// anyone who can read this profile's storage (or to any XSS).
+const REMEMBER_KEY = "motostock_remembered_email";
+// Older builds saved { email, password } here; wipe it on load.
+const LEGACY_REMEMBER_KEY = "motostock_remembered_login";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,17 +26,21 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(REMEMBER_KEY);
-    if (!saved) return;
-    try {
-      const { email: savedEmail, password: savedPassword } = JSON.parse(saved);
-      if (savedEmail && savedPassword) {
-        setEmail(savedEmail);
-        setPassword(savedPassword);
-        setRemember(true);
+    let savedEmail = localStorage.getItem(REMEMBER_KEY);
+    const legacy = localStorage.getItem(LEGACY_REMEMBER_KEY);
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(legacy);
+        if (!savedEmail && typeof parsed?.email === "string") savedEmail = parsed.email;
+      } catch {
+        // unreadable legacy entry -- just drop it
       }
-    } catch {
-      localStorage.removeItem(REMEMBER_KEY);
+      localStorage.removeItem(LEGACY_REMEMBER_KEY);
+      if (savedEmail) localStorage.setItem(REMEMBER_KEY, savedEmail);
+    }
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRemember(true);
     }
   }, []);
 
@@ -56,7 +62,7 @@ export default function LoginPage() {
       setError(result.error ?? "Login failed.");
       return;
     }
-    if (remember) localStorage.setItem(REMEMBER_KEY, JSON.stringify({ email, password }));
+    if (remember) localStorage.setItem(REMEMBER_KEY, email);
     else localStorage.removeItem(REMEMBER_KEY);
   };
 
@@ -150,7 +156,7 @@ export default function LoginPage() {
                 <Field label="Password" value={password} onChange={setPassword} placeholder="••••••••••" type="password" />
                 <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
                   <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-blue-500 w-3.5 h-3.5" />
-                  Remember my password on this device
+                  Remember my email on this device
                 </label>
                 {error && <p className="text-xs text-red-400">{error}</p>}
                 <Button type="submit" loading={busy} className="w-full mt-1">Sign in</Button>
